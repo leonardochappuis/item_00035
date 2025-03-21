@@ -2,15 +2,60 @@
 
 import { Card, CardContent } from "@/components/ui/card"
 import type { Course } from "@/lib/types"
-import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from "recharts"
+import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend, Sector } from "recharts"
 import { useMediaQuery } from "@/hooks/use-media-query"
+import { useState } from "react"
 
 interface ProgressTrackerProps {
   courses: Course[]
 }
 
+// Custom active shape for better label display
+const renderActiveShape = (props: any) => {
+  const { cx, cy, innerRadius, outerRadius, startAngle, endAngle, fill, payload, percent, value } = props
+
+  return (
+    <g>
+      <Sector
+        cx={cx}
+        cy={cy}
+        innerRadius={innerRadius}
+        outerRadius={outerRadius + 6}
+        startAngle={startAngle}
+        endAngle={endAngle}
+        fill={fill}
+      />
+      <text x={cx} y={cy} dy={-20} textAnchor="middle" fill="#888" fontSize={12}>
+        {payload.name}
+      </text>
+      <text x={cx} y={cy} textAnchor="middle" fill="#333" fontSize={14} fontWeight="bold">
+        {`${(percent * 100).toFixed(0)}%`}
+      </text>
+      <text x={cx} y={cy} dy={20} textAnchor="middle" fill="#888" fontSize={12}>
+        {`(${value})`}
+      </text>
+    </g>
+  )
+}
+
+// Custom tooltip component
+const CustomTooltip = ({ active, payload }: any) => {
+  if (active && payload && payload.length) {
+    return (
+      <div className="bg-background border rounded-md shadow-sm p-2 text-xs">
+        <p className="font-medium">{payload[0].name}</p>
+        <p>{`Count: ${payload[0].value}`}</p>
+        <p>{`Percentage: ${(payload[0].payload.percent * 100).toFixed(0)}%`}</p>
+      </div>
+    )
+  }
+  return null
+}
+
 export function ProgressTracker({ courses }: ProgressTrackerProps) {
   const isDesktop = useMediaQuery("(min-width: 768px)")
+  const [activeCategory, setActiveCategory] = useState<number | undefined>(undefined)
+  const [activeCompletion, setActiveCompletion] = useState<number | undefined>(undefined)
 
   if (courses.length === 0) {
     return (
@@ -31,22 +76,32 @@ export function ProgressTracker({ courses }: ProgressTrackerProps) {
       const existingCategory = acc.find((item) => item.name === course.category)
       if (existingCategory) {
         existingCategory.value += 1
+        existingCategory.percent = existingCategory.value / courses.length
       } else {
-        acc.push({ name: course.category, value: 1 })
+        acc.push({
+          name: course.category,
+          value: 1,
+          percent: 1 / courses.length,
+        })
       }
       return acc
     },
-    [] as { name: string; value: number }[],
+    [] as { name: string; value: number; percent: number }[],
   )
 
   // Prepare data for completion status
+  const completedCount = courses.filter((c) => c.progress === 100).length
+  const inProgressCount = courses.filter((c) => c.progress > 0 && c.progress < 100).length
+  const notStartedCount = courses.filter((c) => c.progress === 0).length
+
   const completionData = [
-    { name: "Completed", value: courses.filter((c) => c.progress === 100).length },
-    { name: "In Progress", value: courses.filter((c) => c.progress > 0 && c.progress < 100).length },
-    { name: "Not Started", value: courses.filter((c) => c.progress === 0).length },
+    { name: "Completed", value: completedCount, percent: completedCount / courses.length },
+    { name: "In Progress", value: inProgressCount, percent: inProgressCount / courses.length },
+    { name: "Not Started", value: notStartedCount, percent: notStartedCount / courses.length },
   ]
 
   const COLORS = ["#4f46e5", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6", "#ec4899"]
+  const COMPLETION_COLORS = ["#10b981", "#f59e0b", "#6b7280"]
 
   return (
     <div className="space-y-4 md:space-y-6">
@@ -73,9 +128,7 @@ export function ProgressTracker({ courses }: ProgressTrackerProps) {
           <CardContent className="p-4 md:p-6">
             <div className="text-center">
               <h3 className="text-sm md:text-lg font-medium">Completed</h3>
-              <div className="mt-1 md:mt-2 text-2xl md:text-4xl font-bold">
-                {courses.filter((c) => c.progress === 100).length}
-              </div>
+              <div className="mt-1 md:mt-2 text-2xl md:text-4xl font-bold">{completedCount}</div>
             </div>
           </CardContent>
         </Card>
@@ -89,23 +142,29 @@ export function ProgressTracker({ courses }: ProgressTrackerProps) {
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
                   <Pie
+                    activeIndex={activeCategory}
+                    activeShape={renderActiveShape}
                     data={categoryData}
                     cx="50%"
                     cy="50%"
-                    labelLine={false}
+                    innerRadius={isDesktop ? 60 : 40}
                     outerRadius={isDesktop ? 80 : 60}
                     fill="#8884d8"
                     dataKey="value"
-                    label={({ name, percent }) =>
-                      isDesktop ? `${name} ${(percent * 100).toFixed(0)}%` : `${(percent * 100).toFixed(0)}%`
-                    }
+                    onMouseEnter={(_, index) => setActiveCategory(index)}
+                    onMouseLeave={() => setActiveCategory(undefined)}
                   >
                     {categoryData.map((entry, index) => (
                       <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                     ))}
                   </Pie>
-                  <Tooltip />
-                  <Legend />
+                  <Tooltip content={<CustomTooltip />} />
+                  <Legend
+                    layout="horizontal"
+                    verticalAlign="bottom"
+                    align="center"
+                    wrapperStyle={{ paddingTop: "20px" }}
+                  />
                 </PieChart>
               </ResponsiveContainer>
             </div>
@@ -119,23 +178,29 @@ export function ProgressTracker({ courses }: ProgressTrackerProps) {
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
                   <Pie
+                    activeIndex={activeCompletion}
+                    activeShape={renderActiveShape}
                     data={completionData}
                     cx="50%"
                     cy="50%"
-                    labelLine={false}
+                    innerRadius={isDesktop ? 60 : 40}
                     outerRadius={isDesktop ? 80 : 60}
                     fill="#8884d8"
                     dataKey="value"
-                    label={({ name, percent }) =>
-                      isDesktop ? `${name} ${(percent * 100).toFixed(0)}%` : `${(percent * 100).toFixed(0)}%`
-                    }
+                    onMouseEnter={(_, index) => setActiveCompletion(index)}
+                    onMouseLeave={() => setActiveCompletion(undefined)}
                   >
-                    <Cell fill="#10b981" />
-                    <Cell fill="#f59e0b" />
-                    <Cell fill="#6b7280" />
+                    {completionData.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={COMPLETION_COLORS[index]} />
+                    ))}
                   </Pie>
-                  <Tooltip />
-                  <Legend />
+                  <Tooltip content={<CustomTooltip />} />
+                  <Legend
+                    layout="horizontal"
+                    verticalAlign="bottom"
+                    align="center"
+                    wrapperStyle={{ paddingTop: "20px" }}
+                  />
                 </PieChart>
               </ResponsiveContainer>
             </div>

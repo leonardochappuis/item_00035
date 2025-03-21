@@ -1,7 +1,6 @@
 "use client"
 
 import { useState } from "react"
-import { Calendar } from "@/components/ui/calendar"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import {
@@ -17,11 +16,24 @@ import { Input } from "@/components/ui/input"
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import type { Course } from "@/lib/types"
-import { format } from "date-fns"
+import {
+  format,
+  startOfMonth,
+  endOfMonth,
+  startOfWeek,
+  endOfWeek,
+  addDays,
+  isSameMonth,
+  isSameDay,
+  addMonths,
+  subMonths,
+} from "date-fns"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
 import { useMediaQuery } from "@/hooks/use-media-query"
+import { ChevronLeft, ChevronRight } from "lucide-react"
+import { cn } from "@/lib/utils"
 
 interface StudySession {
   id: string
@@ -44,7 +56,8 @@ const studySessionSchema = z.object({
 type StudySessionFormValues = z.infer<typeof studySessionSchema>
 
 export function StudySchedule({ courses }: StudyScheduleProps) {
-  const [date, setDate] = useState<Date | undefined>(new Date())
+  const [currentMonth, setCurrentMonth] = useState(new Date())
+  const [selectedDate, setSelectedDate] = useState(new Date())
   const [sessions, setSessions] = useState<StudySession[]>([])
   const [open, setOpen] = useState(false)
   const isDesktop = useMediaQuery("(min-width: 768px)")
@@ -59,12 +72,10 @@ export function StudySchedule({ courses }: StudyScheduleProps) {
   })
 
   const handleAddSession = (values: StudySessionFormValues) => {
-    if (!date) return
-
     const newSession: StudySession = {
       id: crypto.randomUUID(),
       courseId: values.courseId,
-      date: date,
+      date: selectedDate,
       duration: Number.parseInt(values.duration),
       notes: values.notes || "",
     }
@@ -74,34 +85,115 @@ export function StudySchedule({ courses }: StudyScheduleProps) {
     setOpen(false)
   }
 
-  const sessionsForSelectedDate = sessions.filter(
-    (session) => date && format(session.date, "yyyy-MM-dd") === format(date, "yyyy-MM-dd"),
-  )
+  const sessionsForSelectedDate = sessions.filter((session) => isSameDay(session.date, selectedDate))
+
+  const prevMonth = () => {
+    setCurrentMonth(subMonths(currentMonth, 1))
+  }
+
+  const nextMonth = () => {
+    setCurrentMonth(addMonths(currentMonth, 1))
+  }
+
+  const onDateClick = (day: Date) => {
+    setSelectedDate(day)
+  }
+
+  const renderHeader = () => {
+    return (
+      <div className="flex items-center justify-between p-4 border-b">
+        <Button variant="outline" size="icon" className="h-8 w-8 md:h-9 md:w-9" onClick={prevMonth}>
+          <ChevronLeft className="h-4 w-4 md:h-5 md:w-5" />
+          <span className="sr-only">Previous month</span>
+        </Button>
+
+        <h3 className="text-base md:text-lg font-medium">{format(currentMonth, "MMMM yyyy")}</h3>
+
+        <Button variant="outline" size="icon" className="h-8 w-8 md:h-9 md:w-9" onClick={nextMonth}>
+          <ChevronRight className="h-4 w-4 md:h-5 md:w-5" />
+          <span className="sr-only">Next month</span>
+        </Button>
+      </div>
+    )
+  }
+
+  const renderDays = () => {
+    const days = []
+    const dateFormat = "EEEEE"
+    const dayNames = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"]
+
+    return (
+      <div className="grid grid-cols-7 gap-1 mb-1 text-center">
+        {dayNames.map((day, i) => (
+          <div key={i} className="text-xs md:text-sm font-medium text-muted-foreground py-2">
+            {day}
+          </div>
+        ))}
+      </div>
+    )
+  }
+
+  const renderCells = () => {
+    const monthStart = startOfMonth(currentMonth)
+    const monthEnd = endOfMonth(monthStart)
+    const startDate = startOfWeek(monthStart)
+    const endDate = endOfWeek(monthEnd)
+
+    const rows = []
+    let days = []
+    let day = startDate
+    let formattedDate = ""
+
+    while (day <= endDate) {
+      for (let i = 0; i < 7; i++) {
+        formattedDate = format(day, "d")
+        const cloneDay = day
+        const hasSession = sessions.some((session) => isSameDay(session.date, day))
+
+        days.push(
+          <div
+            key={day.toString()}
+            className={cn(
+              "h-10 md:h-12 flex items-center justify-center relative border rounded-md cursor-pointer transition-colors",
+              !isSameMonth(day, monthStart) && "text-muted-foreground bg-muted/30",
+              isSameDay(day, selectedDate) && "bg-primary text-primary-foreground",
+              isSameDay(day, new Date()) && !isSameDay(day, selectedDate) && "border-primary",
+              hasSession && !isSameDay(day, selectedDate) && "border-green-500",
+            )}
+            onClick={() => onDateClick(cloneDay)}
+          >
+            <span className="text-xs md:text-sm">{formattedDate}</span>
+            {hasSession && (
+              <div
+                className={cn(
+                  "absolute bottom-1 w-1 h-1 rounded-full",
+                  isSameDay(day, selectedDate) ? "bg-primary-foreground" : "bg-green-500",
+                )}
+              />
+            )}
+          </div>,
+        )
+        day = addDays(day, 1)
+      }
+      rows.push(
+        <div key={day.toString()} className="grid grid-cols-7 gap-1">
+          {days}
+        </div>,
+      )
+      days = []
+    }
+    return <div className="space-y-1">{rows}</div>
+  }
 
   return (
     <div className="grid gap-4 grid-cols-1 lg:grid-cols-2">
       <Card>
-        <CardContent className="p-2 md:p-4">
-          <Calendar
-            mode="single"
-            selected={date}
-            onSelect={setDate}
-            className="rounded-md border"
-            disabled={(date) => date < new Date("1900-01-01")}
-            classNames={{
-              day_today: "bg-primary text-primary-foreground",
-              day_selected: "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground",
-              day_range_middle: "bg-accent text-accent-foreground",
-              day_hidden: "invisible",
-              caption: "text-sm md:text-base",
-              caption_label: "text-sm md:text-base",
-              nav_button: "h-6 w-6 md:h-7 md:w-7",
-              table: "w-full border-collapse",
-              head_cell: "text-xs md:text-sm font-normal text-muted-foreground",
-              cell: "text-center text-xs md:text-sm p-0 relative",
-              day: "h-7 w-7 md:h-9 md:w-9 p-0 font-normal",
-            }}
-          />
+        <CardContent className="p-0">
+          {renderHeader()}
+          <div className="p-4">
+            {renderDays()}
+            {renderCells()}
+          </div>
         </CardContent>
       </Card>
 
@@ -180,9 +272,7 @@ export function StudySchedule({ courses }: StudyScheduleProps) {
         </Dialog>
 
         <div className="rounded-md border p-3 md:p-4">
-          <h3 className="font-medium mb-2 text-sm md:text-base">
-            {date ? format(date, "MMMM d, yyyy") : "Select a date"}
-          </h3>
+          <h3 className="font-medium mb-2 text-sm md:text-base">{format(selectedDate, "MMMM d, yyyy")}</h3>
 
           {sessionsForSelectedDate.length > 0 ? (
             <div className="space-y-3">
