@@ -8,15 +8,17 @@ import { Textarea } from "@/components/ui/textarea"
 import { Calendar } from "@/components/ui/calendar"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { CalendarIcon } from "lucide-react"
-import { format } from "date-fns"
+import { format, parse } from "date-fns"
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { cn } from "@/lib/utils"
 import type { Course } from "@/lib/types"
 import * as z from "zod"
+import { useCourses } from "@/lib/hooks/use-courses"
 
-interface AddCourseFormProps {
-  onAddCourse: (course: Omit<Course, "id" | "progress" | "resources" | "createdAt">) => void
+interface EditCourseFormProps {
+  course: Course
+  onUpdateCourse: (course: Partial<Course>) => void
 }
 
 // Extended schema to include due date
@@ -26,27 +28,33 @@ const extendedCourseSchema = courseSchema.extend({
 
 type ExtendedCourseFormValues = z.infer<typeof extendedCourseSchema>
 
-export function AddCourseForm({ onAddCourse }: AddCourseFormProps) {
+export function EditCourseForm({ course, onUpdateCourse }: EditCourseFormProps) {
+  const { updateCourse } = useCourses()
+
+  // Parse the date string to a Date object if it exists
+  const parsedDueDate = course.dueDate ? parse(course.dueDate, "PPP", new Date()) : undefined
+
   const form = useForm<ExtendedCourseFormValues>({
     resolver: zodResolver(extendedCourseSchema),
     defaultValues: {
-      title: "",
-      description: "",
-      category: "",
-      platform: "",
-      instructor: "",
-      url: "",
-      dueDate: undefined,
+      title: course.title,
+      description: course.description,
+      category: course.category,
+      platform: course.platform,
+      instructor: course.instructor,
+      url: course.url,
+      dueDate: parsedDueDate,
     },
   })
 
   function onSubmit(values: ExtendedCourseFormValues) {
-    onAddCourse({
+    const updatedCourse = {
       ...values,
       dueDate: values.dueDate ? format(values.dueDate, "PPP") : "",
-    })
+    }
 
-    form.reset()
+    updateCourse(course.id, updatedCourse)
+    onUpdateCourse(updatedCourse)
   }
 
   return (
@@ -196,7 +204,7 @@ export function AddCourseForm({ onAddCourse }: AddCourseFormProps) {
         />
 
         <Button type="submit" className="w-full">
-          Add Course
+          Update Course
         </Button>
       </form>
     </Form>

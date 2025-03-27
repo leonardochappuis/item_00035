@@ -12,8 +12,17 @@ import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { resourceSchema, type ResourceFormValues } from "@/lib/validations"
 import * as z from "zod"
-import { useMediaQuery } from "@/hooks/use-media-query"
+import { useIsMobile } from "@/hooks/use-mobile"
 import { Card, CardContent } from "@/components/ui/card"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import { toast } from "sonner"
 
 interface ResourceManagerProps {
   courses: Course[]
@@ -30,7 +39,8 @@ type CourseSelectFormValues = z.infer<typeof courseSelectSchema>
 
 export function ResourceManager({ courses, onAddResource, onRemoveResource }: ResourceManagerProps) {
   const [selectedCourseId, setSelectedCourseId] = useState("")
-  const isDesktop = useMediaQuery("(min-width: 768px)")
+  const [resourceToDelete, setResourceToDelete] = useState<{ courseId: string; resourceId: string } | null>(null)
+  const isMobile = useIsMobile()
 
   // Form for course selection
   const courseSelectForm = useForm<CourseSelectFormValues>({
@@ -57,8 +67,61 @@ export function ResourceManager({ courses, onAddResource, onRemoveResource }: Re
   const handleAddResource = (values: ResourceFormValues) => {
     if (!selectedCourseId) return
 
-    onAddResource(selectedCourseId, values)
+    // Add createdAt timestamp to the resource
+    onAddResource(selectedCourseId, {
+      ...values,
+      createdAt: Date.now(),
+    })
     resourceForm.reset()
+  }
+
+  const handleDeleteClick = (courseId: string, resourceId: string) => {
+    setResourceToDelete({ courseId, resourceId })
+  }
+
+  const confirmDeleteResource = () => {
+    if (resourceToDelete) {
+      const { courseId, resourceId } = resourceToDelete
+      const course = courses.find((c) => c.id === courseId)
+
+      if (course) {
+        const resourceToRemove = course.resources.find((r) => r.id === resourceId)
+
+        if (resourceToRemove) {
+          // Create a copy of the resource to store
+          const resourceCopy = { ...resourceToRemove }
+
+          // Remove the resource
+          onRemoveResource(courseId, resourceId)
+
+          // Show toast with undo option
+          toast("Resource deleted", {
+            description: "The resource has been removed",
+            action: {
+              label: "Undo",
+              onClick: () => {
+                // Find the course
+                const currentCourse = courses.find((c) => c.id === courseId)
+
+                if (currentCourse) {
+                  // Add the resource back
+                  onAddResource(courseId, {
+                    title: resourceCopy.title,
+                    url: resourceCopy.url,
+                    type: resourceCopy.type,
+                    createdAt: resourceCopy.createdAt || Date.now(),
+                  })
+
+                  toast.success("Resource restored")
+                }
+              },
+            },
+          })
+        }
+      }
+
+      setResourceToDelete(null)
+    }
   }
 
   const selectedCourse = courses.find((course) => course.id === selectedCourseId)
@@ -72,7 +135,7 @@ export function ResourceManager({ courses, onAddResource, onRemoveResource }: Re
             name="courseId"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>Select Course</FormLabel>
+                <FormLabel>Select Course *</FormLabel>
                 <Select
                   onValueChange={(value) => {
                     field.onChange(value)
@@ -110,7 +173,7 @@ export function ResourceManager({ courses, onAddResource, onRemoveResource }: Re
                   name="title"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Resource Title</FormLabel>
+                      <FormLabel>Resource Title *</FormLabel>
                       <FormControl>
                         <Input placeholder="Official Documentation" {...field} />
                       </FormControl>
@@ -124,7 +187,7 @@ export function ResourceManager({ courses, onAddResource, onRemoveResource }: Re
                   name="url"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>URL</FormLabel>
+                      <FormLabel>URL *</FormLabel>
                       <FormControl>
                         <Input placeholder="https://example.com/docs" {...field} />
                       </FormControl>
@@ -138,7 +201,7 @@ export function ResourceManager({ courses, onAddResource, onRemoveResource }: Re
                   name="type"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Type</FormLabel>
+                      <FormLabel>Type *</FormLabel>
                       <Select onValueChange={field.onChange} defaultValue={field.value}>
                         <FormControl>
                           <SelectTrigger>
@@ -163,51 +226,7 @@ export function ResourceManager({ courses, onAddResource, onRemoveResource }: Re
           </Form>
 
           {selectedCourse?.resources && selectedCourse.resources.length > 0 ? (
-            isDesktop ? (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Type</TableHead>
-                    <TableHead>Title</TableHead>
-                    <TableHead>URL</TableHead>
-                    <TableHead className="w-[80px]">Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {selectedCourse.resources.map((resource) => (
-                    <TableRow key={resource.id}>
-                      <TableCell>
-                        {resource.type === "article" && <FileText className="h-4 w-4" />}
-                        {resource.type === "video" && <Video className="h-4 w-4" />}
-                        {resource.type === "book" && <Book className="h-4 w-4" />}
-                        {resource.type === "other" && <ExternalLink className="h-4 w-4" />}
-                      </TableCell>
-                      <TableCell className="font-medium">{resource.title}</TableCell>
-                      <TableCell className="font-mono text-xs truncate max-w-[200px]">
-                        <a
-                          href={resource.url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="hover:underline flex items-center"
-                        >
-                          {resource.url}
-                          <ExternalLink className="ml-1 h-3 w-3" />
-                        </a>
-                      </TableCell>
-                      <TableCell>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => onRemoveResource(selectedCourseId, resource.id)}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            ) : (
+            isMobile ? (
               <div className="space-y-3">
                 {selectedCourse.resources.map((resource) => (
                   <Card key={resource.id}>
@@ -235,7 +254,7 @@ export function ResourceManager({ courses, onAddResource, onRemoveResource }: Re
                           variant="ghost"
                           size="icon"
                           className="h-6 w-6"
-                          onClick={() => onRemoveResource(selectedCourseId, resource.id)}
+                          onClick={() => handleDeleteClick(selectedCourseId, resource.id)}
                         >
                           <Trash2 className="h-3 w-3" />
                         </Button>
@@ -244,12 +263,76 @@ export function ResourceManager({ courses, onAddResource, onRemoveResource }: Re
                   </Card>
                 ))}
               </div>
+            ) : (
+              <div className="max-h-[50vh] overflow-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Type</TableHead>
+                      <TableHead>Title</TableHead>
+                      <TableHead>URL</TableHead>
+                      <TableHead className="w-[80px]">Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {selectedCourse.resources.map((resource) => (
+                      <TableRow key={resource.id}>
+                        <TableCell>
+                          {resource.type === "article" && <FileText className="h-4 w-4" />}
+                          {resource.type === "video" && <Video className="h-4 w-4" />}
+                          {resource.type === "book" && <Book className="h-4 w-4" />}
+                          {resource.type === "other" && <ExternalLink className="h-4 w-4" />}
+                        </TableCell>
+                        <TableCell className="font-medium">{resource.title}</TableCell>
+                        <TableCell className="font-mono text-xs truncate max-w-[200px]">
+                          <a
+                            href={resource.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="hover:underline flex items-center"
+                          >
+                            {resource.url}
+                            <ExternalLink className="ml-1 h-3 w-3" />
+                          </a>
+                        </TableCell>
+                        <TableCell>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => handleDeleteClick(selectedCourseId, resource.id)}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
             )
           ) : (
             <p className="text-xs md:text-sm text-muted-foreground">No resources added for this course yet</p>
           )}
         </div>
       )}
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog open={resourceToDelete !== null} onOpenChange={(open) => !open && setResourceToDelete(null)}>
+        <DialogContent className="max-w-[90vw] sm:max-w-[425px] max-h-[80vh] overflow-auto">
+          <DialogHeader>
+            <DialogTitle>Delete resource?</DialogTitle>
+            <DialogDescription>This will remove the resource from your course.</DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setResourceToDelete(null)}>
+              Cancel
+            </Button>
+            <Button variant="destructive" onClick={confirmDeleteResource}>
+              Delete
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

@@ -3,9 +3,9 @@
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
-import { Menu, BookOpen, PlusCircle, Calendar, FileText, BarChart3 } from "lucide-react"
+import { Menu, BookOpen, Calendar, FileText } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { useMediaQuery } from "@/hooks/use-media-query"
+import { useIsMobile } from "@/hooks/use-mobile"
 
 interface MainNavigationProps {
   activeTab: string
@@ -14,14 +14,12 @@ interface MainNavigationProps {
 
 export function MainNavigation({ activeTab, onTabChange }: MainNavigationProps) {
   const [open, setOpen] = useState(false)
-  const isDesktop = useMediaQuery("(min-width: 768px)")
+  const isMobile = useIsMobile()
 
   const menuItems = [
     { id: "courses", label: "My Courses", icon: BookOpen },
-    { id: "add", label: "Add Course", icon: PlusCircle },
     { id: "schedule", label: "Study Schedule", icon: Calendar },
     { id: "resources", label: "Resources", icon: FileText },
-    { id: "progress", label: "Progress", icon: BarChart3 },
   ]
 
   const handleMenuItemClick = (tabId: string) => {
@@ -30,7 +28,7 @@ export function MainNavigation({ activeTab, onTabChange }: MainNavigationProps) 
   }
 
   // Mobile menu (Sheet)
-  if (!isDesktop) {
+  if (isMobile) {
     return (
       <Sheet open={open} onOpenChange={setOpen}>
         <SheetTrigger asChild>
